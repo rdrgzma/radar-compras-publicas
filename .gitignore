@@ -1,0 +1,30 @@
+# Binários e executáveis
+*.exe
+/api-go/radar-api.exe
+/api-go/bin/
+
+# Banco de dados local e logs temporários
+/dados/pgdata/
+/dados/*.log
+
+# Vendor e caches do PHP / Composer
+/painel/vendor/
+/painel/bootstrap/cache/*.php
+/painel/storage/framework/sessions/*
+/painel/storage/framework/views/*
+/painel/storage/framework/cache/*
+/painel/storage/logs/*.log
+!/painel/storage/framework/sessions/.gitkeep
+!/painel/storage/framework/views/.gitkeep
+!/painel/storage/framework/cache/.gitkeep
+
+# Ambientes locais
+.env
+/api-go/.env
+/painel/.env
+
+# IDEs e SO
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
