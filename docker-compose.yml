@@ -1,0 +1,114 @@
+# ==============================================================================
+# Docker Compose — Radar de Compras Públicas (PNCP)
+# Arquitetura:
+# - radar-db:      PostgreSQL 16 com schemas separados (painel e api_go)
+# - radar-api-go:  API REST em Go (coleta, normalização, motor de matching) na porta 8000
+# - radar-painel:  Painel Laravel 13 + Filament 5 (PHP 8.4) na porta 8080
+# ==============================================================================
+
+services:
+  radar-db:
+    image: postgres:16-alpine
+    container_name: radar-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: radar_compras
+      POSTGRES_USER: radar_user
+      POSTGRES_PASSWORD: radar_password_segura_123
+      TZ: America/Sao_Paulo
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-dados:/var/lib/postgresql/data
+      - ./docker/postgres/init-schemas.sql:/docker-entrypoint-initdb.d/init-schemas.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radar_user -d radar_compras"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - radar-network
+
+  radar-api-go:
+    build:
+      context: ./api-go
+      dockerfile: Dockerfile
+    container_name: radar-api-go
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: "8000"
+      APP_ENV: production
+      LOG_LEVEL: info
+      DB_HOST: radar-db
+      DB_PORT: "5432"
+      DB_USER: radar_user
+      DB_PASSWORD: radar_password_segura_123
+      DB_NAME: radar_compras
+      DB_SCHEMA: api_go
+      DB_SSLMODE: disable
+      RADAR_INTERNAL_TOKEN: "radar-token-interno-ultra-seguro-compartilhado-com-painel"
+      TZ: America/Sao_Paulo
+    depends_on:
+      radar-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/saude"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - radar-network
+
+  radar-painel:
+    build:
+      context: ./painel
+      dockerfile: Dockerfile
+    container_name: radar-painel
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      APP_NAME: "Radar de Compras Públicas"
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_KEY: "base64:WbE9s0kK2vGf8M2xT1bN8Q1Z4q5w8r9y0u1i2o3p4a5="
+      APP_URL: "http://localhost:8080"
+      APP_TIMEZONE: America/Sao_Paulo
+      APP_LOCALE: pt_BR
+      APP_FALLBACK_LOCALE: pt_BR
+      DB_CONNECTION: pgsql
+      DB_HOST: radar-db
+      DB_PORT: "5432"
+      DB_DATABASE: radar_compras
+      DB_USERNAME: radar_user
+      DB_PASSWORD: radar_password_segura_123
+      DB_SCHEMA: painel
+      GO_API_URL: "http://radar-api-go:8000"
+      GO_INTERNAL_TOKEN: "radar-token-interno-ultra-seguro-compartilhado-com-painel"
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+    depends_on:
+      radar-db:
+        condition: service_healthy
+      radar-api-go:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/up"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - radar-network
+
+networks:
+  radar-network:
+    driver: bridge
+
+volumes:
+  postgres-dados:
+    driver: local

@@ -1,0 +1,556 @@
+openapi: 3.1.0
+info:
+  title: Radar de Compras Públicas — API Go
+  description: >
+    API interna de alta performance para coleta no Portal Nacional de Contratações
+    Públicas (PNCP), normalização, motor de matching de oportunidades e gerenciamento
+    de sincronizações assíncronas.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000
+    description: Servidor Local de Desenvolvimento
+  - url: http://radar-api-go:8000
+    description: Rede Interna Docker Compose
+
+security:
+  - InternalApiKey: []
+
+paths:
+  /saude:
+    get:
+      summary: Healthcheck do sistema
+      description: Retorna o estado operacional da API Go, conectividade com PostgreSQL e disponibilidade do conector PNCP.
+      security: []
+      responses:
+        '200':
+          description: Sistema operacional
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaudeResponse'
+        '503':
+          description: Sistema com degradação ou indisponibilidade de banco de dados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaudeResponse'
+
+  /api/v1/sync:
+    get:
+      summary: Listar histórico de sincronizações
+      description: Retorna o histórico de execuções de sincronização com paginação e status.
+      parameters:
+        - name: pagina
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: por_pagina
+          in: query
+          schema:
+            type: integer
+            default: 15
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pendente, processando, sucesso, parcial, erro]
+      responses:
+        '200':
+          description: Lista de sincronizações
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SincronizacaoListaResponse'
+
+    post:
+      summary: Disparar nova sincronização do PNCP
+      description: >
+        Inicia assincronamente a coleta de contratações do PNCP para a janela de datas informada.
+        Impede execuções concorrentes equivalentes via trava de concorrência.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IniciarSincronizacaoRequest'
+      responses:
+        '202':
+          description: Sincronização aceita e iniciada em segundo plano
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SincronizacaoCriadaResponse'
+        '409':
+          description: Já existe uma sincronização em andamento
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+        '400':
+          description: Parâmetros de data ou modalidade inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+
+  /api/v1/sync/{id}:
+    get:
+      summary: Consultar andamento da sincronização
+      description: Retorna o estado atualizado da execução de coleta identificada pelo ID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Detalhes do job de sincronização
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SincronizacaoDetalhe'
+        '404':
+          description: Execução não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+
+  /api/v1/oportunidades:
+    get:
+      summary: Listar oportunidades coletadas
+      description: Lista oportunidades armazenadas no banco local com suporte a paginação e múltiplos filtros.
+      parameters:
+        - name: pagina
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: por_pagina
+          in: query
+          schema:
+            type: integer
+            default: 15
+        - name: busca
+          in: query
+          schema:
+            type: string
+        - name: uf
+          in: query
+          schema:
+            type: string
+            example: SP
+        - name: modalidade_id
+          in: query
+          schema:
+            type: integer
+        - name: apenas_vigentes
+          in: query
+          schema:
+            type: boolean
+            default: true
+        - name: incluir_demonstrativos
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Lista paginada de oportunidades
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OportunidadeListaResponse'
+
+  /api/v1/oportunidades/{numero_controle_pncp}:
+    get:
+      summary: Detalhes de uma oportunidade
+      description: Retorna os dados completos e normalizados de uma contratação por seu número de controle oficial no PNCP.
+      parameters:
+        - name: numero_controle_pncp
+          in: path
+          required: true
+          schema:
+            type: string
+            example: '88201298000149-1-001203/2026'
+      responses:
+        '200':
+          description: Dados completos da oportunidade
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Oportunidade'
+        '404':
+          description: Oportunidade não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+
+  /api/v1/oportunidades/match:
+    post:
+      summary: Avaliar correspondência para perfil de fornecedor
+      description: >
+        Recebe os critérios do perfil de um fornecedor (palavras incluídas, palavras excluídas,
+        UFs de interesse) e retorna as oportunidades correspondentes com a justificativa
+        textual explícita do matching.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MatchRequest'
+      responses:
+        '200':
+          description: Lista de oportunidades correspondentes com motivo de match
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchResponse'
+        '400':
+          description: Critérios de perfil malformados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErroResponse'
+
+  /api/v1/demonstracao/carregar:
+    post:
+      summary: Carregar fixtures do modo demonstrativo
+      description: Popula a base de dados com oportunidades simuladas realistas e claramente rotuladas como [DEMONSTRAÇÃO].
+      responses:
+        '200':
+          description: Dados demonstrativos carregados com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sucesso:
+                    type: boolean
+                    example: true
+                  mensagem:
+                    type: string
+                    example: 10 oportunidades demonstrativas inseridas com sucesso.
+                  quantidade:
+                    type: integer
+                    example: 10
+
+components:
+  securitySchemes:
+    InternalApiKey:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+
+  schemas:
+    SaudeResponse:
+      type: object
+      required:
+        - status
+        - banco_de_dados
+        - fuso_horario
+        - timestamp
+      properties:
+        status:
+          type: string
+          example: ok
+        versao:
+          type: string
+          example: 1.0.0
+        banco_de_dados:
+          type: string
+          example: conectado
+        conector_pncp:
+          type: string
+          example: disponivel
+        fuso_horario:
+          type: string
+          example: America/Sao_Paulo
+        timestamp:
+          type: string
+          format: date-time
+
+    IniciarSincronizacaoRequest:
+      type: object
+      required:
+        - data_inicial
+        - data_final
+      properties:
+        data_inicial:
+          type: string
+          format: date
+          example: '2026-10-19'
+        data_final:
+          type: string
+          format: date
+          example: '2026-10-20'
+        modalidades:
+          type: array
+          items:
+            type: integer
+          default: [6, 8]
+          example: [6, 8]
+        modo:
+          type: string
+          enum: [real, demonstrativo]
+          default: real
+
+    SincronizacaoCriadaResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          example: processando
+        mensagem:
+          type: string
+          example: Sincronização iniciada com sucesso em segundo plano.
+
+    SincronizacaoDetalhe:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        origem:
+          type: string
+          example: PNCP
+        status:
+          type: string
+          enum: [pendente, processando, sucesso, parcial, erro]
+        janela_inicial:
+          type: string
+          format: date
+        janela_final:
+          type: string
+          format: date
+        paginas_processadas:
+          type: integer
+          example: 3
+        total_registros_fonte:
+          type: integer
+          example: 45
+        novos_registros:
+          type: integer
+          example: 12
+        registros_atualizados:
+          type: integer
+          example: 33
+        erros_encontrados:
+          type: integer
+          example: 0
+        mensagem_erro:
+          type: string
+          nullable: true
+        iniciado_em:
+          type: string
+          format: date-time
+        finalizado_em:
+          type: string
+          format: date-time
+          nullable: true
+
+    SincronizacaoListaResponse:
+      type: object
+      properties:
+        dados:
+          type: array
+          items:
+            $ref: '#/components/schemas/SincronizacaoDetalhe'
+        total:
+          type: integer
+        pagina:
+          type: integer
+        por_pagina:
+          type: integer
+
+    Oportunidade:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        numero_controle_pncp:
+          type: string
+          example: '88201298000149-1-001203/2026'
+        ano_compra:
+          type: integer
+          example: 2026
+        sequencial_compra:
+          type: integer
+          example: 1203
+        numero_compra:
+          type: string
+          example: '0011'
+        processo:
+          type: string
+          example: '029'
+        objeto:
+          type: string
+          example: Aquisição de equipamentos de proteção individual (EPI).
+        informacao_complementar:
+          type: string
+          nullable: true
+        modalidade_id:
+          type: integer
+          example: 6
+        modalidade_nome:
+          type: string
+          example: Pregão - Eletrônico
+        situacao_id:
+          type: integer
+          example: 1
+        situacao_nome:
+          type: string
+          example: Divulgada no PNCP
+        orgao_cnpj:
+          type: string
+          example: '88201298000149'
+        orgao_razao_social:
+          type: string
+          example: MUNICIPIO DE LAVRAS DO SUL
+        orgao_esfera:
+          type: string
+          example: M
+        orgao_poder:
+          type: string
+          example: N
+        unidade_nome:
+          type: string
+          example: PREFEITURA MUNICIPAL DE LAVRAS DO SUL
+        unidade_uf_sigla:
+          type: string
+          example: RS
+        unidade_uf_nome:
+          type: string
+          example: Rio Grande do Sul
+        unidade_municipio_nome:
+          type: string
+          example: Lavras do Sul
+        valor_total_estimado:
+          type: number
+          format: float
+          nullable: true
+          example: 1066481.42
+        data_publicacao_pncp:
+          type: string
+          format: date-time
+        data_abertura_proposta:
+          type: string
+          format: date-time
+          nullable: true
+        data_encerramento_proposta:
+          type: string
+          format: date-time
+          nullable: true
+        link_sistema_origem:
+          type: string
+          nullable: true
+        link_pncp:
+          type: string
+          example: https://pncp.gov.br/app/editais/88201298000149/2026/1203
+        data_coleta:
+          type: string
+          format: date-time
+        is_demonstrativo:
+          type: boolean
+          example: false
+        prazo_encerrado:
+          type: boolean
+          example: false
+
+    OportunidadeListaResponse:
+      type: object
+      properties:
+        dados:
+          type: array
+          items:
+            $ref: '#/components/schemas/Oportunidade'
+        total:
+          type: integer
+        pagina:
+          type: integer
+        por_pagina:
+          type: integer
+
+    MatchRequest:
+      type: object
+      properties:
+        termos_obrigatorios:
+          type: array
+          items:
+            type: string
+          example: ['equipamentos de protecao', 'seguranca']
+        termos_excluidos:
+          type: array
+          items:
+            type: string
+          example: ['asfalto', 'reforma predial']
+        ufs:
+          type: array
+          items:
+            type: string
+          example: ['RS', 'SC', 'PR']
+        apenas_vigentes:
+          type: boolean
+          default: true
+        incluir_demonstrativos:
+          type: boolean
+          default: true
+        pagina:
+          type: integer
+          default: 1
+        por_pagina:
+          type: integer
+          default: 15
+
+    OportunidadeMatchItem:
+      allOf:
+        - $ref: '#/components/schemas/Oportunidade'
+        - type: object
+          properties:
+            correspondente:
+              type: boolean
+              example: true
+            motivo_correspondencia:
+              type: string
+              example: "Termo incluído 'equipamentos de protecao' encontrado no objeto; UF 'RS' compatível; nenhuma palavra excluída encontrada."
+            pontuacao_relevancia:
+              type: integer
+              example: 85
+
+    MatchResponse:
+      type: object
+      properties:
+        dados:
+          type: array
+          items:
+            $ref: '#/components/schemas/OportunidadeMatchItem'
+        total:
+          type: integer
+        pagina:
+          type: integer
+        por_pagina:
+          type: integer
+
+    ErroResponse:
+      type: object
+      required:
+        - erro
+        - mensagem
+      properties:
+        erro:
+          type: string
+          example: erro_requisicao
+        mensagem:
+          type: string
+          example: Descrição legível do erro ocorrido.
+        detalhes:
+          type: object
+          nullable: true
