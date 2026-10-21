@@ -37,4 +37,19 @@ class Empresa extends Model
     {
         return $this->hasMany(OportunidadeSelecao::class);
     }
+
+    public function produtosCatalogo(): HasMany
+    {
+        return $this->hasMany(ProdutoCatalogo::class);
+    }
+
+    public function itemComparacoes(): HasMany
+    {
+        return $this->hasMany(ItemComparacao::class);
+    }
+
+    public function alertas(): HasMany
+    {
+        return $this->hasMany(AlertaHistorico::class);
+    }
 }

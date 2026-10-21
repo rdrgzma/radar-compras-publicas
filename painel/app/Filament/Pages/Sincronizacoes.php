@@ -10,15 +10,20 @@ use Filament\Forms;
 
 class Sincronizacoes extends Page
 {
-    protected static ?string $navigationIcon = 'heroicon-o-arrow-path';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-arrow-path';
 
     protected static ?string $navigationLabel = 'Monitor de Sincronizações';
 
     protected static ?string $title = 'Sincronizações do PNCP';
 
-    protected static ?string $navigationGroup = 'Operações & Coleta';
+    protected static string|\UnitEnum|null $navigationGroup = 'Operações & Coleta';
 
-    protected static string $view = 'filament.pages.sincronizacoes';
+    protected string $view = 'filament.pages.sincronizacoes';
+
+    public static function canAccess(): bool
+    {
+        return auth()->user()?->isAdmin() ?? false;
+    }
 
     public array $historico = [];
     public array $saudeApi = [];

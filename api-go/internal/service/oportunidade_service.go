@@ -39,10 +39,12 @@ func (s *OportunidadeService) AvaliarMatch(ctx context.Context, req domain.Match
 		req.PorPagina = 15
 	}
 
-	// Busca oportunidades candidatas vigentes
+	// Busca oportunidades candidatas com pré-filtragem no banco
 	params := storage.ListOportunidadesParams{
 		Pagina:               1,
-		PorPagina:            500, // Janela ampla para filtragem e matching em memória
+		PorPagina:            3000,
+		UFs:                  req.UFs,
+		TermosQualquer:       req.TermosObrigatorios,
 		ApenasVigentes:       req.ApenasVigentes,
 		IncluirDemonstrativo: req.IncluirDemonstrativo,
 	}

@@ -16,4 +16,10 @@ class EditMinhasSelecoes extends EditRecord
             Actions\DeleteAction::make(),
         ];
     }
+
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        $data['atualizado_por_id'] = auth()->id();
+        return $data;
+    }
 }

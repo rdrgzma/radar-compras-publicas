@@ -29,6 +29,18 @@ $env:DB_SCHEMA = "api_go"
 $env:PORT = "8000"
 $env:RADAR_INTERNAL_TOKEN = "radar-token-interno-ultra-seguro-compartilhado-com-painel"
 
+$cssPath = Join-Path $baseDir "painel\public\css\filament\filament\app.css"
+if (-not (Test-Path $cssPath)) {
+    Write-Host "[2/3] Publicando assets estáticos do Filament..." -ForegroundColor Yellow
+    Push-Location (Join-Path $baseDir "painel")
+    if (Test-Path "C:\Users\00026108\.config\herd\bin\php84.bat") {
+        & "C:\Users\00026108\.config\herd\bin\php84.bat" artisan filament:assets --no-interaction
+    } else {
+        php artisan filament:assets --no-interaction
+    }
+    Pop-Location
+}
+
 Write-Host "[2/3] Verificando serviços em execução..." -ForegroundColor Yellow
 $procGo = Get-Process -Name "radar-api" -ErrorAction SilentlyContinue
 if ($null -eq $procGo) {
@@ -47,12 +59,13 @@ try {
     Write-Host "[3/3] Aviso: API Go ainda inicializando ou na porta 8000." -ForegroundColor Yellow
 }
 
-Write-Host "`n==========================================================" -ForegroundColor Cyan
-Write-Host "   SISTEMA PRONTO PARA USO E DEMONSTRAÇÃO" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "==========================================================" -ForegroundColor Cyan
+Write-Host "   SISTEMA PRONTO PARA USO E DEMONSTRACAO" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "Painel Administrativo:  http://localhost:8080/admin" -ForegroundColor White
-Write-Host "  Login:  admin@radar.com.br | Senha: admin123`n" -ForegroundColor Gray
+Write-Host "  Login:  admin@radar.com.br | Senha: admin123" -ForegroundColor Gray
 Write-Host "Portal do Fornecedor:   http://localhost:8080/portal" -ForegroundColor White
-Write-Host "  Login:  fornecedor@alphaepi.com.br | Senha: fornecedor123`n" -ForegroundColor Gray
+Write-Host "  Login:  fornecedor@alphaepi.com.br | Senha: fornecedor123" -ForegroundColor Gray
 Write-Host "API Go Healthcheck:     http://localhost:8000/saude" -ForegroundColor White
 Write-Host "==========================================================" -ForegroundColor Cyan

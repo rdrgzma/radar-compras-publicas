@@ -2,10 +2,12 @@
 
 namespace App\Filament\Portal\Resources;
 
+use App\Filament\Portal\Resources\PerfilFornecedorResource\Pages;
 use App\Models\FornecedorPerfil;
+use Filament\Actions;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -14,7 +16,7 @@ class PerfilFornecedorResource extends Resource
 {
     protected static ?string $model = FornecedorPerfil::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-adjustments-horizontal';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-adjustments-horizontal';
 
     protected static ?string $navigationLabel = 'Perfil de Fornecimento';
 
@@ -24,17 +26,26 @@ class PerfilFornecedorResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        // Isolamento estrito por empresa logada
         $empresaId = auth()->user()?->empresa_id;
+        if (!$empresaId && auth()->user()?->isAdmin()) {
+            return parent::getEloquentQuery();
+        }
         return parent::getEloquentQuery()->where('empresa_id', $empresaId);
     }
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
+                Forms\Components\Select::make('empresa_id')
+                    ->label('Empresa Vinculada')
+                    ->relationship('empresa', 'razao_social')
+                    ->default(fn () => auth()->user()?->empresa_id ?? \App\Models\Empresa::first()?->id)
+                    ->required()
+                    ->visible(fn () => auth()->user()?->isAdmin() && !auth()->user()?->empresa_id),
                 Forms\Components\Hidden::make('empresa_id')
-                    ->default(fn () => auth()->user()?->empresa_id),
+                    ->default(fn () => auth()->user()?->empresa_id ?? \App\Models\Empresa::first()?->id)
+                    ->visible(fn () => !auth()->user()?->isAdmin() || (bool) auth()->user()?->empresa_id),
                 Forms\Components\TextInput::make('nome')
                     ->label('Nome do Perfil')
                     ->placeholder('Ex: Fornecimento de EPIs e Uniformes')
@@ -96,7 +107,7 @@ class PerfilFornecedorResource extends Resource
                     ->boolean(),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
+                Actions\EditAction::make(),
             ]);
     }
 

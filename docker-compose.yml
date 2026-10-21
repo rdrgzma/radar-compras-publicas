@@ -105,6 +105,38 @@ services:
     networks:
       - radar-network
 
+  radar-scheduler:
+    build:
+      context: ./painel
+      dockerfile: Dockerfile
+    container_name: radar-scheduler
+    restart: unless-stopped
+    command: ["php", "artisan", "schedule:work"]
+    environment:
+      APP_NAME: "Radar de Compras Públicas (Scheduler)"
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_KEY: "base64:WbE9s0kK2vGf8M2xT1bN8Q1Z4q5w8r9y0u1i2o3p4a5="
+      APP_URL: "http://radar-painel:8080"
+      APP_TIMEZONE: America/Sao_Paulo
+      APP_LOCALE: pt_BR
+      APP_FALLBACK_LOCALE: pt_BR
+      DB_CONNECTION: pgsql
+      DB_HOST: radar-db
+      DB_PORT: "5432"
+      DB_DATABASE: radar_compras
+      DB_USERNAME: radar_user
+      DB_PASSWORD: radar_password_segura_123
+      DB_SCHEMA: painel
+      GO_API_URL: "http://radar-api-go:8000"
+      GO_INTERNAL_TOKEN: "radar-token-interno-ultra-seguro-compartilhado-com-painel"
+      CACHE_STORE: database
+    depends_on:
+      radar-painel:
+        condition: service_healthy
+    networks:
+      - radar-network
+
 networks:
   radar-network:
     driver: bridge

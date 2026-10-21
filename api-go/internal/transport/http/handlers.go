@@ -40,13 +40,16 @@ func (h *Handler) Healthcheck(w http.ResponseWriter, r *http.Request) {
 		statusCode = http.StatusServiceUnavailable
 	}
 
+	pncpStatus, lastSuccess := h.syncService.PncpStatus()
+
 	responderJSON(w, statusCode, map[string]interface{}{
-		"status":         "ok",
-		"versao":         "1.0.0",
-		"banco_de_dados": dbStatus,
-		"conector_pncp":  "disponivel",
-		"fuso_horario":   "America/Sao_Paulo",
-		"timestamp":      time.Now().Format(time.RFC3339),
+		"status":                 "ok",
+		"versao":                 "1.0.0",
+		"banco_de_dados":         dbStatus,
+		"conector_pncp":          pncpStatus,
+		"conector_ultimo_sucesso": lastSuccess.Format(time.RFC3339),
+		"fuso_horario":           "America/Sao_Paulo",
+		"timestamp":              time.Now().Format(time.RFC3339),
 	})
 }
 

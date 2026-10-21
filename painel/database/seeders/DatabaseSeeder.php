@@ -103,5 +103,8 @@ class DatabaseSeeder extends Seeder
                 'ativo'               => true,
             ]
         );
+
+        // 4. Empresa 3 Demonstrativa: Ecoclean (Caso Demonstrativo Personalizado)
+        $this->call(EcocleanDemonstracaoSeeder::class);
     }
 }

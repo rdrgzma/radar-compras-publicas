@@ -23,6 +23,12 @@
 /api-go/.env
 /painel/.env
 
+# Scratch e arquivos temporarios de teste
+/scratch/
+/dados/
+*.pdf
+sync_pequena.json
+
 # IDEs e SO
 .vscode/
 .idea/

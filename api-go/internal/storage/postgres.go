@@ -285,6 +285,8 @@ type ListOportunidadesParams struct {
 	PorPagina            int
 	Busca                string
 	UF                   string
+	UFs                  []string
+	TermosQualquer       []string
 	ModalidadeID         int
 	ApenasVigentes       bool
 	IncluirDemonstrativo bool
@@ -295,8 +297,11 @@ func (s *Storage) ListOportunidades(ctx context.Context, p ListOportunidadesPara
 	if p.Pagina < 1 {
 		p.Pagina = 1
 	}
-	if p.PorPagina < 1 || p.PorPagina > 100 {
+	if p.PorPagina < 1 {
 		p.PorPagina = 15
+	}
+	if p.PorPagina > 5000 {
+		p.PorPagina = 5000
 	}
 
 	var where []string
@@ -319,6 +324,34 @@ func (s *Storage) ListOportunidades(ctx context.Context, p ListOportunidadesPara
 		where = append(where, fmt.Sprintf("UPPER(unidade_uf_sigla) = $%d", argIdx))
 		args = append(args, strings.ToUpper(p.UF))
 		argIdx++
+	} else if len(p.UFs) > 0 {
+		var placeholders []string
+		for _, uf := range p.UFs {
+			ufTrim := strings.ToUpper(strings.TrimSpace(uf))
+			if ufTrim != "" {
+				placeholders = append(placeholders, fmt.Sprintf("$%d", argIdx))
+				args = append(args, ufTrim)
+				argIdx++
+			}
+		}
+		if len(placeholders) > 0 {
+			where = append(where, fmt.Sprintf("UPPER(unidade_uf_sigla) IN (%s)", strings.Join(placeholders, ", ")))
+		}
+	}
+
+	if len(p.TermosQualquer) > 0 {
+		var termOrs []string
+		for _, t := range p.TermosQualquer {
+			tLimpo := strings.TrimSpace(t)
+			if tLimpo != "" {
+				termOrs = append(termOrs, fmt.Sprintf("(objeto ILIKE $%d OR informacao_complementar ILIKE $%d OR orgao_razao_social ILIKE $%d)", argIdx, argIdx, argIdx))
+				args = append(args, "%"+tLimpo+"%")
+				argIdx++
+			}
+		}
+		if len(termOrs) > 0 {
+			where = append(where, "("+strings.Join(termOrs, " OR ")+")")
+		}
 	}
 
 	if p.ModalidadeID > 0 {

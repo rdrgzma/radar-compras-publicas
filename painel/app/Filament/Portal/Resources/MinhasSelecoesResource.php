@@ -2,23 +2,24 @@
 
 namespace App\Filament\Portal\Resources;
 
+use App\Filament\Portal\Resources\MinhasSelecoesResource\Pages;
 use App\Models\OportunidadeSelecao;
 use App\Services\CsvExportService;
 use App\Services\GoApiClient;
+use Filament\Actions;
 use Filament\Forms;
-use Filament\Forms\Form;
-use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
+use Filament\Notifications\Notification;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MinhasSelecoesResource extends Resource
 {
     protected static ?string $model = OportunidadeSelecao::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-bookmark-square';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-bookmark-square';
 
     protected static ?string $navigationLabel = 'Minhas Seleções';
 
@@ -30,14 +31,16 @@ class MinhasSelecoesResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        // Isolamento estrito por empresa logada
         $empresaId = auth()->user()?->empresa_id;
+        if (!$empresaId && auth()->user()?->isAdmin()) {
+            return parent::getEloquentQuery();
+        }
         return parent::getEloquentQuery()->where('empresa_id', $empresaId);
     }
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
                 Forms\Components\TextInput::make('numero_controle_pncp')
                     ->label('Nº de Controle PNCP')
@@ -64,8 +67,7 @@ class MinhasSelecoesResource extends Resource
                 Tables\Columns\TextColumn::make('numero_controle_pncp')
                     ->label('Controle PNCP')
                     ->searchable()
-                    ->sortable()
-                    ->copyable(),
+                    ->sortable(),
                 Tables\Columns\BadgeColumn::make('status')
                     ->label('Status')
                     ->formatStateUsing(fn ($state) => match ($state) {
@@ -100,8 +102,8 @@ class MinhasSelecoesResource extends Resource
                     ]),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\Action::make('verPncp')
+                Actions\EditAction::make(),
+                Actions\Action::make('verPncp')
                     ->label('Ver Edital')
                     ->icon('heroicon-m-arrow-top-right-on-square')
                     ->url(function (OportunidadeSelecao $record, GoApiClient $client) {
@@ -111,7 +113,7 @@ class MinhasSelecoesResource extends Resource
                     ->openUrlInNewTab(),
             ])
             ->headerActions([
-                Tables\Actions\Action::make('exportarCsv')
+                Actions\Action::make('exportarCsv')
                     ->label('Exportar Seleção em CSV')
                     ->icon('heroicon-o-arrow-down-tray')
                     ->color('primary')

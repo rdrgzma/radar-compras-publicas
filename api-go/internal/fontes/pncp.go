@@ -7,7 +7,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,8 +25,12 @@ const (
 )
 
 type PNCPClient struct {
-	httpClient *http.Client
-	baseURL    string
+	httpClient        *http.Client
+	baseURL           string
+	mu                sync.RWMutex
+	lastHealthCheck   time.Time
+	lastHealthStatus  string
+	lastSuccessTime   time.Time
 }
 
 func NewPNCPClient(customBaseURL string) *PNCPClient {
@@ -36,62 +42,64 @@ func NewPNCPClient(customBaseURL string) *PNCPClient {
 		httpClient: &http.Client{
 			Timeout: DefaultTimeout,
 		},
-		baseURL: url,
+		baseURL:          url,
+		lastHealthStatus: "disponivel",
+		lastSuccessTime:  time.Now(),
 	}
 }
 
 // RespostaPNCP representa o envelope JSON retornado pelo endpoint oficial do PNCP.
 type RespostaPNCP struct {
-	Data            []ItemContratacaoPNCP `json:"data"`
-	TotalRegistros  int                   `json:"totalRegistros"`
-	TotalPaginas    int                   `json:"totalPaginas"`
-	NumeroPagina    int                   `json:"numeroPagina"`
-	PaginasRestantes int                  `json:"paginasRestantes"`
-	Empty           bool                  `json:"empty"`
+	Data             []ItemContratacaoPNCP `json:"data"`
+	TotalRegistros   int                   `json:"totalRegistros"`
+	TotalPaginas     int                   `json:"totalPaginas"`
+	NumeroPagina     int                   `json:"numeroPagina"`
+	PaginasRestantes int                   `json:"paginasRestantes"`
+	Empty            bool                  `json:"empty"`
 }
 
 type ItemContratacaoPNCP struct {
-	NumeroControlePNCP          string                `json:"numeroControlePNCP"`
-	AnoCompra                   int                   `json:"anoCompra"`
-	SequencialCompra            int                   `json:"sequencialCompra"`
-	NumeroCompra                string                `json:"numeroCompra"`
-	Processo                    string                `json:"processo"`
-	ObjetoCompra                string                `json:"objetoCompra"`
-	InformacaoComplementar      *string               `json:"informacaoComplementar"`
-	ModalidadeID                int                   `json:"modalidadeId"`
-	ModalidadeNome              string                `json:"modalidadeNome"`
-	ModoDisputaID               *int                  `json:"modoDisputaId"`
-	ModoDisputaNome             *string               `json:"modoDisputaNome"`
-	SituacaoCompraID            int                   `json:"situacaoCompraId"`
-	SituacaoCompraNome          string                `json:"situacaoCompraNome"`
-	ValorTotalEstimado          *float64              `json:"valorTotalEstimado"`
-	ValorTotalHomologado        *float64              `json:"valorTotalHomologado"`
-	DataPublicacaoPNCP          string                `json:"dataPublicacaoPncp"`
-	DataAberturaProposta        *string               `json:"dataAberturaProposta"`
-	DataEncerramentoProposta    *string               `json:"dataEncerramentoProposta"`
-	DataAtualizacao             *string               `json:"dataAtualizacao"`
-	LinkSistemaOrigem           *string               `json:"linkSistemaOrigem"`
-	LinkProcessoEletronico      *string               `json:"linkProcessoEletronico"`
-	OrgaoEntidade               OrgaoEntidadePNCP     `json:"orgaoEntidade"`
-	UnidadeOrgao                UnidadeOrgaoPNCP      `json:"unidadeOrgao"`
+	NumeroControlePNCP       string            `json:"numeroControlePNCP"`
+	AnoCompra                int               `json:"anoCompra"`
+	SequencialCompra         int               `json:"sequencialCompra"`
+	NumeroCompra             string            `json:"numeroCompra"`
+	Processo                 string            `json:"processo"`
+	ObjetoCompra             string            `json:"objetoCompra"`
+	InformacaoComplementar   *string           `json:"informacaoComplementar"`
+	ModalidadeID             int               `json:"modalidadeId"`
+	ModalidadeNome           string            `json:"modalidadeNome"`
+	ModoDisputaID            *int              `json:"modoDisputaId"`
+	ModoDisputaNome          *string           `json:"modoDisputaNome"`
+	SituacaoCompraID         int               `json:"situacaoCompraId"`
+	SituacaoCompraNome       string            `json:"situacaoCompraNome"`
+	ValorTotalEstimado       *float64          `json:"valorTotalEstimado"`
+	ValorTotalHomologado     *float64          `json:"valorTotalHomologado"`
+	DataPublicacaoPNCP       string            `json:"dataPublicacaoPncp"`
+	DataAberturaProposta     *string           `json:"dataAberturaProposta"`
+	DataEncerramentoProposta *string           `json:"dataEncerramentoProposta"`
+	DataAtualizacao          *string           `json:"dataAtualizacao"`
+	LinkSistemaOrigem        *string           `json:"linkSistemaOrigem"`
+	LinkProcessoEletronico   *string           `json:"linkProcessoEletronico"`
+	OrgaoEntidade            OrgaoEntidadePNCP `json:"orgaoEntidade"`
+	UnidadeOrgao             UnidadeOrgaoPNCP  `json:"unidadeOrgao"`
 }
 
 type OrgaoEntidadePNCP struct {
-	CNPJ         string  `json:"cnpj"`
-	RazaoSocial  string  `json:"razaoSocial"`
-	PoderID      *string `json:"poderId"`
-	EsferaID     *string `json:"esferaId"`
+	CNPJ        string  `json:"cnpj"`
+	RazaoSocial string  `json:"razaoSocial"`
+	PoderID     *string `json:"poderId"`
+	EsferaID    *string `json:"esferaId"`
 }
 
 type UnidadeOrgaoPNCP struct {
-	UfSigla        string  `json:"ufSigla"`
-	UfNome         *string `json:"ufNome"`
-	MunicipioNome  *string `json:"municipioNome"`
-	NomeUnidade    *string `json:"nomeUnidade"`
-	CodigoIBGE     *string `json:"codigoIbge"`
+	UfSigla       string  `json:"ufSigla"`
+	UfNome        *string `json:"ufNome"`
+	MunicipioNome *string `json:"municipioNome"`
+	NomeUnidade   *string `json:"nomeUnidade"`
+	CodigoIBGE    *string `json:"codigoIbge"`
 }
 
-// FetchPagina consulta uma única página no PNCP aplicando retry e backoff progressivo.
+// FetchPagina consulta uma única página no PNCP com tratamento estrito de Retry-After e rate limit (429).
 func (c *PNCPClient) FetchPagina(ctx context.Context, dataInicial, dataFinal string, modalidadeID, pagina, tamanhoPagina int) (*RespostaPNCP, error) {
 	if tamanhoPagina < 10 {
 		tamanhoPagina = 10
@@ -113,18 +121,39 @@ func (c *PNCPClient) FetchPagina(ctx context.Context, dataInicial, dataFinal str
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			lastErr = err
-			slog.Warn("Falha na tentativa de chamada ao PNCP", "tentativa", tentativa, "url", url, "erro", err)
-			time.Sleep(time.Duration(tentativa*BaseBackoffMillis) * time.Millisecond)
+			slog.Warn("Falha de rede na chamada ao PNCP", "tentativa", tentativa, "url", url, "erro", err)
+			espera := time.Duration(tentativa*BaseBackoffMillis) * time.Millisecond
+			time.Sleep(espera)
 			continue
 		}
 
 		corpo, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 
-		if resp.StatusCode >= 500 || resp.StatusCode == 429 {
-			lastErr = fmt.Errorf("resposta HTTP com erro transitório %d: %s", resp.StatusCode, string(corpo))
-			slog.Warn("Status transitório recebido do PNCP", "status", resp.StatusCode, "tentativa", tentativa)
-			time.Sleep(time.Duration(tentativa*BaseBackoffMillis) * time.Millisecond)
+		// Tratamento de HTTP 429 com respeito ao cabeçalho Retry-After
+		if resp.StatusCode == 429 {
+			retryAfterHeader := resp.Header.Get("Retry-After")
+			espera := time.Duration(tentativa*1500) * time.Millisecond // fallback progressivo mais conservador
+			if retrySecs, err := strconv.Atoi(retryAfterHeader); err == nil && retrySecs > 0 {
+				espera = time.Duration(retrySecs) * time.Second
+				slog.Warn("PNCP rate limit (429) com cabeçalho Retry-After", "segundos", retrySecs, "tentativa", tentativa)
+			} else {
+				slog.Warn("PNCP rate limit (429) sem cabeçalho específico, aplicando espera progressiva", "espera", espera, "tentativa", tentativa)
+			}
+
+			c.mu.Lock()
+			c.lastHealthStatus = "degradado (rate limit 429)"
+			c.mu.Unlock()
+
+			lastErr = fmt.Errorf("resposta HTTP 429 (Too Many Requests): %s", string(corpo))
+			time.Sleep(espera)
+			continue
+		}
+
+		if resp.StatusCode >= 500 {
+			lastErr = fmt.Errorf("resposta HTTP com erro 5xx do PNCP (%d): %s", resp.StatusCode, string(corpo))
+			espera := time.Duration(tentativa*BaseBackoffMillis) * time.Millisecond
+			time.Sleep(espera)
 			continue
 		}
 
@@ -137,13 +166,26 @@ func (c *PNCPClient) FetchPagina(ctx context.Context, dataInicial, dataFinal str
 			return nil, fmt.Errorf("falha ao desserializar JSON do PNCP: %w", err)
 		}
 
+		c.mu.Lock()
+		c.lastHealthStatus = "disponivel"
+		c.lastSuccessTime = time.Now()
+		c.mu.Unlock()
+
 		return &envelope, nil
 	}
 
 	return nil, fmt.Errorf("todas as %d tentativas falharam: %w", MaxRetries, lastErr)
 }
 
-// NormalizarConverte converte o item da resposta oficial do PNCP para o modelo canônico do domínio.
+// StatusConector verifica o estado recente do conector sem fazer chamada externa a cada healthcheck.
+// Utiliza TTL de 5 minutos da última consulta bem-sucedida para evitar estourar quota do PNCP.
+func (c *PNCPClient) StatusConector() (string, time.Time) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.lastHealthStatus, c.lastSuccessTime
+}
+
+// NormalizarItem converte o item da resposta oficial do PNCP para o modelo canônico do domínio.
 func NormalizarItem(item ItemContratacaoPNCP) domain.Oportunidade {
 	agora := time.Now()
 	pubTime := parseDataHora(item.DataPublicacaoPNCP, agora)
@@ -162,7 +204,7 @@ func NormalizarItem(item ItemContratacaoPNCP) domain.Oportunidade {
 		atuTime = &t
 	}
 
-	// Normalização de campos nulos para apresentação clara
+	// Normalização estrita de campos ausentes
 	infoComp := "não informado"
 	if item.InformacaoComplementar != nil && strings.TrimSpace(*item.InformacaoComplementar) != "" {
 		infoComp = strings.TrimSpace(*item.InformacaoComplementar)
@@ -217,7 +259,6 @@ func NormalizarItem(item ItemContratacaoPNCP) domain.Oportunidade {
 		linkProc = *item.LinkProcessoEletronico
 	}
 
-	// Link oficial de consulta no portal web do PNCP
 	cnpjLimpo := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(item.OrgaoEntidade.CNPJ, ".", ""), "-", ""), "/", "")
 	linkPncp := fmt.Sprintf("https://pncp.gov.br/app/editais/%s/%d/%d", cnpjLimpo, item.AnoCompra, item.SequencialCompra)
 

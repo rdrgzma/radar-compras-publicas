@@ -12,7 +12,7 @@ use Filament\Pages\Page;
 
 class RadarOportunidades extends Page
 {
-    protected static ?string $navigationIcon = 'heroicon-o-magnifying-glass-circle';
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-magnifying-glass-circle';
 
     protected static ?string $navigationLabel = 'Radar de Oportunidades';
 
@@ -20,7 +20,7 @@ class RadarOportunidades extends Page
 
     protected static ?int $navigationSort = 1;
 
-    protected static string $view = 'filament.portal.pages.radar-oportunidades';
+    protected string $view = 'filament.portal.pages.radar-oportunidades';
 
     public array $oportunidades = [];
     public ?FornecedorPerfil $perfilAtivo = null;
@@ -40,6 +40,11 @@ class RadarOportunidades extends Page
         $this->perfilAtivo = FornecedorPerfil::where('empresa_id', $empresaId)
             ->where('ativo', true)
             ->first();
+
+        // Se for administrador inspecionando o portal sem empresa vinculada, utiliza o primeiro perfil ativo como demonstração
+        if (!$this->perfilAtivo && auth()->user()?->isAdmin()) {
+            $this->perfilAtivo = FornecedorPerfil::where('ativo', true)->first();
+        }
 
         if (!$this->perfilAtivo) {
             $this->oportunidades = [];
@@ -80,7 +85,7 @@ class RadarOportunidades extends Page
 
     public function salvarSelecao(string $numeroControle, string $status, ?string $observacoes): void
     {
-        $empresaId = auth()->user()->empresa_id;
+        $empresaId = auth()->user()->empresa_id ?? \App\Models\Empresa::first()?->id;
 
         OportunidadeSelecao::updateOrCreate(
             [

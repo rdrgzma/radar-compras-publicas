@@ -27,6 +27,10 @@ func NewSyncService(store *storage.Storage, pncpClient *fontes.PNCPClient) *Sync
 	}
 }
 
+func (s *SyncService) PncpStatus() (string, time.Time) {
+	return s.pncpClient.StatusConector()
+}
+
 type IniciarSyncParams struct {
 	DataInicial string // YYYY-MM-DD
 	DataFinal   string // YYYY-MM-DD
